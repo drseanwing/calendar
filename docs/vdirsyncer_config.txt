@@ -1,0 +1,194 @@
+# vdirsyncer Configuration for iCloud Calendar Sync
+# This configuration syncs iCloud calendars to the Baikal CalDAV server
+# 
+# Installation:
+#   pip install vdirsyncer
+# 
+# Setup:
+#   1. Copy this file to ~/.config/vdirsyncer/config
+#   2. Update the credentials and URLs below
+#   3. Run: vdirsyncer discover
+#   4. Run: vdirsyncer sync
+# 
+# For automated sync, add to cron:
+#   */15 * * * * vdirsyncer sync
+
+[general]
+# Path where vdirsyncer stores its state
+status_path = "~/.vdirsyncer/status/"
+
+################################################################################
+# iCloud Calendar → Baikal Sync Pair
+################################################################################
+
+[pair icloud_to_baikal]
+# Sync from iCloud to Baikal (one-way)
+a = "icloud_calendar"
+b = "baikal_calendar"
+
+# Collections to sync
+# Use ["from a", "from b"] to sync all calendars
+# Or specify calendar names: ["Calendar1", "Calendar2"]
+collections = ["from a"]
+
+# Conflict resolution
+# Options: "a wins", "b wins"
+conflict_resolution = "a wins"
+
+################################################################################
+# iCloud CalDAV Source (A)
+################################################################################
+
+[storage icloud_calendar]
+type = "caldav"
+
+# iCloud CalDAV URL
+# Format: https://caldav.icloud.com/[calendar-id]/
+# You can find your calendar URLs at:
+# - Go to iCloud.com → Calendar
+# - Click calendar settings (gear icon)
+# - Check "Public Calendar" and copy the webcal URL
+# - Replace "webcal://" with "https://"
+url = "https://caldav.icloud.com/"
+
+# iCloud credentials
+# IMPORTANT: Use an app-specific password, NOT your Apple ID password!
+# Generate at: https://appleid.apple.com/account/manage
+username = "${ICLOUD_USERNAME}"
+password = "${ICLOUD_PASSWORD}"
+
+# SSL/TLS settings
+verify = true
+
+# Read-only mode (recommended for one-way sync)
+read_only = true
+
+# Authentication
+auth = "basic"
+
+################################################################################
+# Baikal CalDAV Destination (B)
+################################################################################
+
+[storage baikal_calendar]
+type = "caldav"
+
+# Baikal CalDAV URL
+# Format: http://baikal:80/dav.php/
+url = "${CALDAV_URL}"
+
+# Baikal credentials
+username = "${CALDAV_USERNAME}"
+password = "${CALDAV_PASSWORD}"
+
+# SSL/TLS settings (set to false for http://)
+verify = false
+
+# Authentication
+auth = "basic"
+
+# Create calendars if they don't exist
+# This will create calendars in Baikal matching your iCloud calendars
+# fileext = ".ics"
+
+################################################################################
+# Additional Sync Pairs (Optional)
+################################################################################
+
+# If you want to sync multiple specific calendars, you can create additional pairs:
+
+# [pair icloud_work_to_baikal]
+# a = "icloud_work"
+# b = "baikal_work"
+# collections = null
+# conflict_resolution = "a wins"
+
+# [storage icloud_work]
+# type = "caldav"
+# url = "https://caldav.icloud.com/published/2/..."
+# username = "${ICLOUD_USERNAME}"
+# password = "${ICLOUD_PASSWORD}"
+# read_only = true
+
+# [storage baikal_work]
+# type = "caldav"
+# url = "${CALDAV_URL}"
+# username = "${CALDAV_USERNAME}"
+# password = "${CALDAV_PASSWORD}"
+
+################################################################################
+# Notes and Troubleshooting
+################################################################################
+
+# IMPORTANT NOTES:
+# 
+# 1. iCloud App-Specific Password:
+#    - Do NOT use your regular Apple ID password
+#    - Generate at: https://appleid.apple.com/account/manage
+#    - Format: xxxx-xxxx-xxxx-xxxx
+# 
+# 2. Two-Factor Authentication:
+#    - iCloud requires 2FA to be enabled
+#    - App-specific passwords are required when 2FA is enabled
+# 
+# 3. Calendar Discovery:
+#    - Run `vdirsyncer discover` to find available calendars
+#    - This will show which calendars are available to sync
+# 
+# 4. First Sync:
+#    - First sync may take a while depending on calendar size
+#    - Subsequent syncs only transfer changes
+# 
+# 5. One-Way vs Two-Way Sync:
+#    - Current config is ONE-WAY (iCloud → Baikal)
+#    - read_only = true prevents changes to iCloud
+#    - For two-way sync, set read_only = false (not recommended with M365 sync)
+# 
+# 6. Troubleshooting:
+#    - Test connection: vdirsyncer --verbosity DEBUG discover
+#    - Check logs: vdirsyncer --verbosity DEBUG sync
+#    - Verify credentials work in browser at caldav URLs
+
+################################################################################
+# Environment Variables
+################################################################################
+
+# Instead of hardcoding credentials in this file, you can use environment
+# variables which will be automatically substituted:
+# 
+# export ICLOUD_USERNAME="your.email@icloud.com"
+# export ICLOUD_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+# export CALDAV_URL="http://baikal:80/dav.php/"
+# export CALDAV_USERNAME="consolidated"
+# export CALDAV_PASSWORD="your-baikal-password"
+
+################################################################################
+# Automation with Cron
+################################################################################
+
+# To run vdirsyncer every 15 minutes, add to crontab (crontab -e):
+# 
+# */15 * * * * /usr/local/bin/vdirsyncer sync >> /var/log/vdirsyncer.log 2>&1
+# 
+# Or with Docker:
+# 
+# */15 * * * * docker-compose exec -T middleware vdirsyncer sync >> /var/log/vdirsyncer.log 2>&1
+
+################################################################################
+# Manual Sync Commands
+################################################################################
+
+# Discover calendars:
+#   vdirsyncer discover
+# 
+# Sync all pairs:
+#   vdirsyncer sync
+# 
+# Sync specific pair:
+#   vdirsyncer sync icloud_to_baikal
+# 
+# Force full sync (ignore cached state):
+#   vdirsyncer sync --force-delete
+# 
+# Verbose output for debugging:
+#   vdirsyncer --verbosity DEBUG sync
