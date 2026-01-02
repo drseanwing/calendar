@@ -1,0 +1,134 @@
+version: '3.8'
+
+# Calendar Consolidation System
+# Complete Docker Compose configuration for multi-tenant calendar sync
+# Author: Claude (for Sean)
+# Version: 1.0.0
+
+services:
+  # PostgreSQL Database - Event mapping and metadata storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: calendar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-calendardb}
+      POSTGRES_USER: ${POSTGRES_USER:-calendaruser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - calendar-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-calendaruser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Baikal CalDAV/CardDAV Server
+  baikal:
+    image: ckulka/baikal:nginx
+    container_name: calendar-baikal
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"  # Expose only to localhost
+    environment:
+      - BAIKAL_SERVERNAME=${CALDAV_DOMAIN}
+      - BAIKAL_SERVERALIAS=${CALDAV_DOMAIN}
+    volumes:
+      - ./baikal/config:/var/www/baikal/config
+      - ./baikal/data:/var/www/baikal/Specific
+    networks:
+      - calendar-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Python Flask Sync Middleware
+  middleware:
+    build:
+      context: ./middleware
+      dockerfile: Dockerfile
+    container_name: calendar-middleware
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"  # Expose only to localhost
+    environment:
+      # Flask Configuration
+      FLASK_ENV: production
+      FLASK_APP: app.py
+      
+      # Database Configuration
+      DATABASE_URL: postgresql://${POSTGRES_USER:-calendaruser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-calendardb}
+      
+      # CalDAV Server Configuration
+      CALDAV_URL: http://baikal:80/dav.php
+      CALDAV_USERNAME: ${CALDAV_USERNAME}
+      CALDAV_PASSWORD: ${CALDAV_PASSWORD}
+      CALDAV_CALENDAR_NAME: ${CALDAV_CALENDAR_NAME:-All Events}
+      
+      # API Security
+      API_KEY: ${API_KEY}
+      
+      # Logging Configuration
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FILE: /app/logs/middleware.log
+      
+      # Sync Configuration
+      SYNC_BATCH_SIZE: ${SYNC_BATCH_SIZE:-50}
+      WEBHOOK_TIMEOUT: ${WEBHOOK_TIMEOUT:-30}
+    volumes:
+      - ./middleware:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      baikal:
+        condition: service_healthy
+    networks:
+      - calendar-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  calendar-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres-data:
+  baikal-config:
+  baikal-data:
